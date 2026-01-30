@@ -1,0 +1,32 @@
+# Analyse du réseau électrique européen
+# Institut Néel - CNRS
+
+# Core
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.10.0
+
+# Réseaux et graphes
+networkx>=3.0
+pypsa>=0.25.0
+
+# Visualisation
+matplotlib>=3.7.0
+plotly>=5.14.0
+pyvis>=0.3.0
+
+# Données géographiques
+geopandas>=0.13.0
+shapely>=2.0.0
+
+# Notebooks
+jupyter>=1.0.0
+ipykernel>=6.22.0
+
+# Web client (optionnel)
+flask>=2.3.0
+flask-cors>=4.0.0
+
+# Utilitaires
+tqdm>=4.65.0
+pyyaml>=6.0

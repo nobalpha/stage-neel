@@ -12,7 +12,7 @@ class HamiltonianGrid(nx.Graph):
         super().__init__()
         self.N = N
         self.q_N = q_N
-        self.q_snapshots = {}
+        self.q_snapshots = np.empty(q_N, dtype=object)
         self._nodes = []
         self._lines = []
         self.betas = np.zeros(q_N)
@@ -44,6 +44,7 @@ class HamiltonianGrid(nx.Graph):
                     self.add_edge(f"N_{r}_{c}", line_id, sign=+1)
                     self.add_edge(f"N_{r}_{c+1}", line_id, sign=-1)
                     line_count += 1
+                    self._lines.append(line_id)
 
                 # Ligne Verticale
                 if r < grid_size - 1:
@@ -55,7 +56,7 @@ class HamiltonianGrid(nx.Graph):
                     self.add_edge(f"N_{r+1}_{c}", line_id, sign=+1)
                     line_count += 1
 
-                self._lines.append(line_id)
+                    self._lines.append(line_id)
         self.pos = nx.get_node_attributes(self, 'pos')
 
         return self
@@ -64,10 +65,11 @@ class HamiltonianGrid(nx.Graph):
         fig, ax = plt.subplots(1, 1, figsize=figsize)
         weights = nx.get_node_attributes(self, 'weight').values()
         weights = list(map(lambda x: abs(x), weights))
+        node_size = [node_size for node in self.nodes()]
+
         labels = {}
         for node in self.nodes():
             w = self.nodes[node]["weight"]
-
             if abs(w) > 0:
 
                 labels[node] = f"{node}\n({w:.2f})"  # Affiche Nom et Poids
@@ -76,8 +78,14 @@ class HamiltonianGrid(nx.Graph):
 
             if node == f"N_{self.ix}_{self.iy}":
                 labels[node] = f"Ins: {labels[node]}"
+                index = list(self.nodes()).index(node)
+                node_size[index] *= 3
+                weights[index] = max(weights) or 1
             elif node == f"N_{self.ex}_{self.ey}":
                 labels[node] = f"Ext: {labels[node]}"
+                index = list(self.nodes()).index(node)
+                node_size[index] *= 3
+                weights[index] = max(weights) or 1
 
         nx.draw(self, pos=self.pos, ax=ax, node_color=weights, with_labels=False,
                 cmap=plt.cm.viridis, node_size=node_size, font_size=9, font_weight="bold")
@@ -85,6 +93,7 @@ class HamiltonianGrid(nx.Graph):
             nx.draw_networkx_labels(self, self.pos, labels=labels,
                                     font_size=8,
                                     font_family='sans-serif',
+                                    font_color="black",
                                     font_weight="bold")
 
     def get_edge_sign(self, u, v):
@@ -210,7 +219,7 @@ class HamiltonianGrid(nx.Graph):
     def calculate_effective_resistances(self):
         self.R_eff = []
         for psi in self.psi_sqs:
-            self.R_eff.append(1/psi)
+            self.R_eff.append(psi)
 
         return self.R_eff
 
@@ -233,9 +242,43 @@ class HamiltonianGrid(nx.Graph):
 
         json.dump(data, open(filename, "w"))
 
+    def test_line_capacity(self, tix=None, tiy=None):
+
+        self.total_psi = {}
+        if tix is None:
+            tix = self.N
+        if tiy is None:
+            tiy = self.N
+
+        for i in range(self.N):
+            for j in range(self.N):
+                if tix == i and tiy == j:
+                    continue
+                # Mettre à jour les positions d'entrée et de sortie
+                ex = i
+                ey = j
+                self.ex = ex
+                self.ey = ey
+                # Itérer à travers tous les états quantiques du système
+                self.iterate_qs()
+
+                self.calculate_psi_approx()
+                self.apply_psi_to_graph(0)
+                # G.draw_network(figsize=(20,10), node_size=1200, with_labels=True)
+                for l in self._lines:
+                    if l not in self.total_psi:
+                        self.total_psi[l] = 0
+                    self.total_psi[l] += abs(self.psis[-1][l])
+
+        for l in self.total_psi:
+
+            self.nodes[l]["weight"] = self.total_psi[l]
+
+        self.draw_network(figsize=(20, 10), node_size=1200, with_labels=True)
+
 
 class EuropeanGrid(nx.Graph):
-    def __init__(self, pypsa_network, q_N, ix, iy, iw, ex, ey, ew):
+    def __init__(self, pypsa_network, q_N, ix=None, iy=None, iw=1, ex=None, ey=None, ew=-1, real_data=True, use_real_power=False):
         super().__init__()
         self.n = pypsa_network  # Store the PyPSA object
         self.q_N = q_N
@@ -248,6 +291,59 @@ class EuropeanGrid(nx.Graph):
         self.ix, self.iy = ix, iy
         self.ex, self.ey = ex, ey
         self.iw, self.ew = iw, ew
+        self.real_data = real_data
+        self.use_real_power = use_real_power  # NEW: Use actual generator/load data
+
+        # Power injection data (generators positive, loads negative)
+        self.bus_power = {}  # Will store net power per bus
+        self.generators = {}  # Generation per bus
+        self.loads = {}  # Load per bus
+
+    def _calculate_bus_power(self, normalize=True):
+        """
+        Calculate net power injection per bus from PyPSA data.
+        Generators = positive (source), Loads = negative (sink)
+
+        Args:
+            normalize: If True, scale generation to match load for balanced grid
+        """
+        import pandas as pd
+
+        # Get mean load per bus (average over all time steps)
+        if hasattr(self.n, 'loads_t') and 'p_set' in self.n.loads_t:
+            load_per_bus = self.n.loads_t.p_set.mean()
+        else:
+            load_per_bus = self.n.loads['p_set']
+
+        # Get total generation capacity per bus
+        gen_per_bus = self.n.generators.groupby('bus')['p_nom'].sum()
+
+        # Store in instance and compute totals
+        total_gen = 0
+        total_load = 0
+        for bus_id in self.n.buses.index:
+            self.generators[bus_id] = gen_per_bus.get(bus_id, 0)
+            self.loads[bus_id] = load_per_bus.get(bus_id, 0)
+            total_gen += self.generators[bus_id]
+            total_load += self.loads[bus_id]
+
+        # Store totals for reference
+        self.total_generation = total_gen
+        self.total_load = total_load
+
+        # Calculate net power
+        # For power flow: scale generators so total generation = total load (balanced grid)
+        if normalize and total_gen > 0 and total_load > 0:
+            gen_scale = total_load / total_gen
+            for bus_id in self.n.buses.index:
+                scaled_gen = self.generators[bus_id] * gen_scale
+                self.bus_power[bus_id] = scaled_gen - self.loads[bus_id]
+        else:
+            for bus_id in self.n.buses.index:
+                self.bus_power[bus_id] = self.generators[bus_id] - \
+                    self.loads[bus_id]
+
+        return self.bus_power
 
     def build_from_pypsa(self):
         """
@@ -272,7 +368,9 @@ class EuropeanGrid(nx.Graph):
             pos_u = self.nodes[f"N_{u}"]['pos']
             pos_v = self.nodes[f"N_{v}"]['pos']
             mid_pos = ((pos_u[0] + pos_v[0])/2, (pos_u[1] + pos_v[1])/2)
-            sqrt_b = (1 / length)**0.5
+            sqrt_b = 1
+            if self.real_data:
+                sqrt_b = (1 / length)**0.5
 
             # Add the line as a node
             self.add_node(line_id, type='line', weight=0.0, pos=mid_pos)
@@ -283,7 +381,26 @@ class EuropeanGrid(nx.Graph):
             self.add_edge(f"N_{v}", line_id, sign=-sqrt_b)
 
         self.pos = nx.get_node_attributes(self, 'pos')
+
+        # 3. Calculate bus power data if using real power
+        if self.use_real_power:
+            self._calculate_bus_power()
+
         return self
+
+    def normalize_weights(self):
+        max_weight = max([data.get('weight', 0)
+                         for node, data in self.nodes(data=True)])
+        if max_weight > 0:
+            for node in self.nodes:
+                self.nodes[node]['weight'] /= max_weight
+
+    def realize_weights(self):
+        max_weight = max([data.get('weight', 0)
+                         for node, data in self.nodes(data=True)])
+        if max_weight > 0:
+            for node in self.nodes:
+                self.nodes[node]['weight'] *= max_weight
 
     # --- Keep your existing calculate_q_i, iterate_qs, etc. here ---
     # Just ensure you reference self.ix instead of f"N_{self.ix}_{self.iy}"
@@ -291,26 +408,34 @@ class EuropeanGrid(nx.Graph):
         fig, ax = plt.subplots(1, 1, figsize=figsize)
         weights = nx.get_node_attributes(self, 'weight').values()
         weights = list(map(lambda x: abs(x), weights))
+        node_size = [node_size for node in self.nodes()]
         labels = {}
         for node in self.nodes():
-            w = self.nodes[node]["weight"]
+            w = round(self.nodes[node]["weight"], 2)
 
             if abs(w) > 0:
 
-                labels[node] = f"{node}\n({w:.2f})"  # Affiche Nom et Poids
+                # f"{node}\n({w:.2f})"  # Affiche Nom et Poids
+                labels[node] = f"{w}"
             else:
                 labels[node] = "0"
 
             if node == f"N_{self.ix}":
                 labels[node] = f"Ins: {labels[node]}"
+                index = list(self.nodes()).index(node)
+                node_size[index] *= 3
+                weights[index] = 1
             elif node == f"N_{self.ex}":
                 labels[node] = f"Ext: {labels[node]}"
-
+                index = list(self.nodes()).index(node)
+                node_size[index] *= 3
+                weights[index] = 1
         nx.draw(self, pos=self.pos, ax=ax, node_color=weights, with_labels=False,
                 cmap=plt.cm.viridis, node_size=node_size, font_size=9, font_weight="bold")
         if with_labels:
             nx.draw_networkx_labels(self, self.pos, labels=labels,
                                     font_size=8,
+                                    font_color="white",
                                     font_family='sans-serif',
                                     font_weight="bold")
 
@@ -318,12 +443,14 @@ class EuropeanGrid(nx.Graph):
 
         return self[u][v].get('sign', 1)
 
-    def remove_element(self, type: str, index: int, country_code: str = ""):
+    def remove_element(self, type: str, index: str | int, country_code: str = ""):
         type = type.upper()
         if type == "N":
-            self.remove_node(f"{country_code} {index}")
+            self.remove_node(f"N_{country_code} {index}")
+            self._nodes.remove(f"N_{country_code} {index}")
         elif type == "L":
             self.remove_node(f"L_{index}")
+            self._lines.remove(f"L_{index}")
 
     def calculate_q_i(self, i):  # i is q_i
         temp_weights = {}
@@ -332,18 +459,52 @@ class EuropeanGrid(nx.Graph):
         if i == 1:
             for node in self.nodes:
                 self.nodes[node]["weight"] = 0
-            beta_1 = (self.iw**2+self.ew**2)**(1/2)
 
-            insert_id = f"N_{self.ix}"
+            # NEW: Use real power data if enabled
+            if self.use_real_power and self.bus_power:
+                # Initialize q_1 with all generators (positive) and loads (negative)
+                # First normalize the power vector to unit norm (like the 2-node case)
+                power_sq_sum = sum(
+                    p**2 for p in self.bus_power.values() if p != 0)
+                power_norm = power_sq_sum**(0.5)
 
-            self.nodes[insert_id]["weight"] = self.iw/beta_1
+                # Store total power for later use in kappa calculation
+                self._total_power_input = sum(
+                    p for p in self.bus_power.values() if p > 0)
 
-            extract_id = f"N_{self.ex}"
-            self.nodes[extract_id]["weight"] = self.ew/beta_1
-            self.q_snapshots[0] = {insert_id: self.iw /
-                                   beta_1, extract_id: self.ew/beta_1}
-            self.betas[0] = beta_1
-            return beta_1
+                # beta_1 = 1 (unit normalized vector), just like sqrt(1^2 + 1^2)/sqrt(2) = 1
+                beta_1 = 1.0
+
+                self.q_snapshots[0] = {}
+                for bus_id, power in self.bus_power.items():
+                    if power != 0:
+                        node_id = f"N_{bus_id}"
+                        # Normalize to unit vector
+                        norm_weight = power / power_norm
+                        self.nodes[node_id]["weight"] = norm_weight
+                        self.q_snapshots[0][node_id] = norm_weight
+
+                self.betas[0] = beta_1
+                return beta_1
+            else:
+                # Original: single source and sink
+                beta_1 = (self.iw**2+self.ew**2)**(1/2)
+
+                insert_id = f"{self.ix}"
+                if not self.ix.startswith("N_"):
+                    insert_id = f"N_{self.ix}"
+
+                extract_id = f"{self.ex}"
+                if not self.ex.startswith("N_"):
+                    extract_id = f"N_{self.ex}"
+
+                self.nodes[insert_id]["weight"] = self.iw/beta_1
+
+                self.nodes[extract_id]["weight"] = self.ew/beta_1
+                self.q_snapshots[0] = {insert_id: self.iw /
+                                       beta_1, extract_id: self.ew/beta_1}
+                self.betas[0] = beta_1
+                return beta_1
 
         nodes_to_check = set()
         for node_id in self.q_snapshots[i-2]:
@@ -416,6 +577,15 @@ class EuropeanGrid(nx.Graph):
 
     def calculate_kappa(self):
         self.kappas = np.zeros((len(self.q_snapshots) // 2,))
+
+        # Get total input power for normalization
+        if self.use_real_power and self.bus_power:
+            # After normalization, total positive = total negative
+            # Use 1 as reference since q vectors are already normalized
+            total_input = 1.0  # Unit power reference
+        else:
+            total_input = self.iw
+
         for i_pair in range(2, len(self.q_snapshots) + 1, 2):
             i = i_pair // 2
 
@@ -425,9 +595,9 @@ class EuropeanGrid(nx.Graph):
                                    1 - 1] / self.betas[2*j + 2 - 1])
 
             sign = (-1)**(i - 1)
-            kappa_2i = sign * (self.iw / self.betas[1]) * product_ratios
+            kappa_2i = sign * (total_input / self.betas[1]) * product_ratios
             if i == 1:
-                kappa_2i = self.iw / self.betas[1]  # k2*b2 = P
+                kappa_2i = total_input / self.betas[1]  # k2*b2 = P
             self.kappas[i-1] = kappa_2i
 
     def calculate_psi_approx(self):
@@ -456,6 +626,33 @@ class EuropeanGrid(nx.Graph):
     def calculate_effective_resistances(self):
         self.R_eff = []
         for psi in self.psi_sqs:
-            self.R_eff.append(1/psi)
+            self.R_eff.append(psi)
 
         return self.R_eff
+
+    """ def test_line_capacity(self, tix=None):
+
+        self.total_psi = {}
+        if tix is None:
+            tix = self._nodes[len(self._nodes)//2]
+
+        for i in range(len(self._nodes)):
+            ex = self._nodes[i]
+            if tix == ex:
+                continue
+
+            self.ex = ex
+            self.iterate_qs()
+
+            self.calculate_psi_approx()
+            self.apply_psi_to_graph(0)
+            # G.draw_network(figsize=(20,10), node_size=1200, with_labels=True)
+            for l in self._lines:
+                if l not in self.total_psi:
+                    self.total_psi[l] = 0
+                self.total_psi[l] += abs(self.psis[-1][l])
+        for l in self.total_psi:
+
+            self.nodes[l]["weight"] = self.total_psi[l]
+
+        self.draw_network(figsize=(20, 10), node_size=1200, with_labels=True) """

@@ -1,0 +1,81 @@
+{
+    "submarine_cables": [
+        {
+            "name": "North Sea Link",
+            "from_node": "N_GB0 9",
+            "to_node": "N_NO2 11",
+            "capacity_mw": 1400,
+            "type": "HVDC"
+        },
+        {
+            "name": "NordLink",
+            "from_node": "N_DE1 51",
+            "to_node": "N_NO2 11",
+            "capacity_mw": 1400,
+            "type": "HVDC"
+        },
+        {
+            "name": "NorNed",
+            "from_node": "N_NL1 0",
+            "to_node": "N_NO2 11",
+            "capacity_mw": 700,
+            "type": "HVDC"
+        },
+        {
+            "name": "BritNed",
+            "from_node": "N_GB0 47",
+            "to_node": "N_NL1 17",
+            "capacity_mw": 1000,
+            "type": "HVDC"
+        },
+        {
+            "name": "Nemo Link",
+            "from_node": "N_GB0 47",
+            "to_node": "N_BE1 8",
+            "capacity_mw": 1000,
+            "type": "HVDC"
+        },
+        {
+            "name": "IFA-2",
+            "from_node": "N_GB0 7",
+            "to_node": "N_FR1 18",
+            "capacity_mw": 1000,
+            "type": "HVDC"
+        },
+        {
+            "name": "SAPEI",
+            "from_node": "N_IT1 17",
+            "to_node": "N_IT3 2",
+            "capacity_mw": 1000,
+            "type": "HVDC"
+        },
+        {
+            "name": "NordBalt",
+            "from_node": "N_SE2 10",
+            "to_node": "N_LT6 1",
+            "capacity_mw": 700,
+            "type": "HVDC"
+        },
+        {
+            "name": "Estlink 2",
+            "from_node": "N_FI2 5",
+            "to_node": "N_EE6 0",
+            "capacity_mw": 650,
+            "type": "HVDC"
+        },
+        {
+            "name": "Mon.Ita",
+            "from_node": "N_IT1 41",
+            "to_node": "N_ME1 0",
+            "capacity_mw": 600,
+            "type": "HVDC"
+        },
+        {
+            "name": "COBRAcable",
+            "from_node": "N_DK1 0",
+            "to_node": "N_NL1 0",
+            "capacity_mw": 700,
+            "type": "HVDC"
+        }
+    ]
+}

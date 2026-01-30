@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>European Grid Simulator</title>
+
+        <!-- Leaflet CSS -->
+        <link
+            rel="stylesheet"
+            href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        />
+
+        <!-- Chart.js -->
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+        <!-- Tom Select for searchable dropdowns -->
+        <link
+            href="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/css/tom-select.css"
+            rel="stylesheet"
+        />
+        <script src="https://cdn.jsdelivr.net/npm/tom-select@2.2.2/dist/js/tom-select.complete.min.js"></script>
+
+        <link rel="stylesheet" href="styles.css" />
+    </head>
+    <body>
+        <div class="app-container">
+            <!-- Header -->
+            <header class="header">
+                <h1>⚡ European Grid Simulator</h1>
+                <div class="header-actions">
+                    <button id="resetBtn" class="btn btn-warning">
+                        🔄 Reset Grid
+                    </button>
+                    <button id="simulateBtn" class="btn btn-primary">
+                        ▶️ Run Simulation
+                    </button>
+                </div>
+            </header>
+
+            <!-- Main Content -->
+            <div class="main-content">
+                <!-- Left Sidebar - Controls -->
+                <aside class="sidebar left-sidebar">
+                    <div class="panel">
+                        <h3>📍 Endpoints Configuration</h3>
+                        <div class="form-group">
+                            <label for="busInSelect">Input Bus (Source)</label>
+                            <select
+                                id="busInSelect"
+                                placeholder="Select input bus..."
+                            ></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="busOutSelect">Output Bus (Sink)</label>
+                            <select
+                                id="busOutSelect"
+                                placeholder="Select output bus..."
+                            ></select>
+                        </div>
+                        <button
+                            id="applyEndpointsBtn"
+                            class="btn btn-success btn-block"
+                        >
+                            Apply Endpoints
+                        </button>
+                    </div>
+
+                    <div class="panel">
+                        <h3>🗑️ Remove Elements</h3>
+                        <div class="form-group">
+                            <label for="removeLineSelect">Remove Line</label>
+                            <select
+                                id="removeLineSelect"
+                                placeholder="Select line to remove..."
+                            ></select>
+                        </div>
+                        <button
+                            id="removeLineBtn"
+                            class="btn btn-danger btn-block"
+                        >
+                            Remove Selected Line
+                        </button>
+
+                        <div class="form-group" style="margin-top: 15px">
+                            <label for="removeNodeSelect">Remove Node</label>
+                            <select
+                                id="removeNodeSelect"
+                                placeholder="Select node to remove..."
+                            ></select>
+                        </div>
+                        <button
+                            id="removeNodeBtn"
+                            class="btn btn-danger btn-block"
+                        >
+                            Remove Selected Node
+                        </button>
+                    </div>
+
+                    <div class="panel">
+                        <h3>📊 Grid Statistics</h3>
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <span class="stat-label">Nodes</span>
+                                <span id="statNodes" class="stat-value">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Lines</span>
+                                <span id="statLines" class="stat-value">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Avg β</span>
+                                <span id="statBeta" class="stat-value">-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Avg R_eff</span>
+                                <span id="statResistance" class="stat-value"
+                                    >-</span
+                                >
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <h3>🚫 Removed Elements</h3>
+                        <div id="removedList" class="removed-list">
+                            <p class="empty-message">No elements removed</p>
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- Map Container -->
+                <main class="map-container">
+                    <div id="map"></div>
+                    <div class="map-legend">
+                        <h4>Weight Scale</h4>
+                        <div class="legend-gradient"></div>
+                        <div class="legend-labels">
+                            <span>Low</span>
+                            <span>High</span>
+                        </div>
+                        <div class="legend-items">
+                            <div class="legend-item">
+                                <span class="legend-marker input-marker"></span>
+                                <span>Input Bus</span>
+                            </div>
+                            <div class="legend-item">
+                                <span
+                                    class="legend-marker output-marker"
+                                ></span>
+                                <span>Output Bus</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-marker node-marker"></span>
+                                <span>Bus Node</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-marker line-marker"></span>
+                                <span>Line Node</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="loadingOverlay" class="loading-overlay">
+                        <div class="spinner"></div>
+                        <p>Simulating...</p>
+                    </div>
+                </main>
+
+                <!-- Right Sidebar - Charts -->
+                <aside class="sidebar right-sidebar">
+                    <div class="panel">
+                        <h3>📈 κ² (Kappa Squared)</h3>
+                        <canvas id="kappaChart"></canvas>
+                    </div>
+
+                    <div class="panel">
+                        <h3>📉 β (Beta Values)</h3>
+                        <canvas id="betaChart"></canvas>
+                    </div>
+
+                    <div class="panel">
+                        <h3>🔌 Effective Resistance</h3>
+                        <canvas id="resistanceChart"></canvas>
+                    </div>
+
+                    <div class="panel">
+                        <h3>🌊 ψ² (Psi Squared)</h3>
+                        <canvas id="psiChart"></canvas>
+                    </div>
+                </aside>
+            </div>
+
+            <!-- Footer -->
+            <footer class="footer">
+                <p>European Grid Simulator | Lanczos Algorithm Visualization</p>
+            </footer>
+        </div>
+
+        <!-- Leaflet JS -->
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+        <!-- Main Application Script -->
+        <script src="app.js"></script>
+    </body>
+</html>
