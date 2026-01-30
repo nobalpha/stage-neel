@@ -1,16 +1,19 @@
-# Analyse de Résilience du Réseau Électrique Européen
+# Modélisation des réseaux électriques par une approche quantique
 
-Projet de stage à l'Institut Néel (CNRS) — Application de l'algorithme de Lanczos pour l'analyse des réseaux électriques via un formalisme inspiré des marches quantiques.
+Réalisé par **Sylvain Hoffmann** & **Roni Kolukisayan**
 
----
+Tuteur de stage : M. Didier Mayou
+
+Projet de stage à l'Institut Néel (CNRS)
 
 ## Formalisme
 
 Le réseau électrique est modélisé comme un graphe où :
 
 - **Nœuds (bus)** : centrales, sous-stations, points de charge
-- **Arêtes (lignes)** : lignes de transmission avec poids = impédance
+- **Arêtes (lignes)** : lignes de transmission avec poids
 - **Signes (+1/-1)** : encodent la direction du flux de puissance
+- **Poids (B)** : susceptibilité des lignes
 
 Le système est représenté par une **matrice Hamiltonienne H** satisfaisant :
 
@@ -18,7 +21,7 @@ Le système est représenté par une **matrice Hamiltonienne H** satisfaisant :
 H|ψ⟩ = P
 ```
 
-où |ψ⟩ est le vecteur d'état (distribution de puissance).
+où |ψ⟩ est le vecteur d'état (distribution de puissance) et P est la puissance injectée/extraite.
 
 ---
 
@@ -36,20 +39,16 @@ où |ψ⟩ est le vecteur d'état (distribution de puissance).
 
 ## Algorithme de Lanczos
 
-Méthode itérative transformant H en matrice tridiagonale T :
-
-```
-T = Qᵀ H Q
-```
+Méthode itérative representant H dans la base de Krylov par les vecteurs de Lanczos :
 
 **Étapes :**
 
 1. Initialisation : q₀ = 0, q₁ = vecteur source normalisé
-2. Itération : qᵢ₊₁ = H·qᵢ − αᵢ·qᵢ − βᵢ·qᵢ₋₁
-3. Calcul de βᵢ = ‖qᵢ₊₁‖, puis normalisation
+2. Itération : qᵢ₊₁ = (1/βᵢ₊₁) ⋅ (H·qᵢ − βᵢ·qᵢ₋₁)
+3. Calcul de βᵢ₊₁ = ‖qᵢ₊₁‖, puis normalisation
 4. Reconstruction de ψ via les coefficients κᵢ
 
-Permet de calculer efficacement les **résistances effectives** et d'identifier les **lignes critiques**.
+Permet de calculer efficacement l'effet de la pérturbation par un regard local pour calculer les **résistances effectives** et d'identifier les **lignes critiques**.
 
 ---
 
@@ -153,10 +152,9 @@ Modèle open-source du réseau électrique européen :
 
 ## Références
 
-1. **Algorithme de Lanczos** — Lanczos, C. (1950). "An iteration method for the solution of the eigenvalue problem"
-2. **PyPSA** — Brown, T. et al. (2018). "PyPSA: Python for Power System Analysis"
-3. **PyPSA-Eur** — Hörsch, J. et al. (2018). "PyPSA-Eur: An open optimisation model of the European transmission system"
-4. **Marches Quantiques** — Kempe, J. (2003). "Quantum random walks: An introductory overview"
+1. **PyPSA** — Brown, T. et al. (2018). "PyPSA: Python for Power System Analysis"
+2. **PyPSA-Eur** — Hörsch, J. et al. (2018). "PyPSA-Eur: An open optimisation model of the European transmission system"
+3. **Quantum Analogy of the Power Grid** — Guichard P. (2024) A quantum analogy for the modeling of large power grids
 
 ---
 
